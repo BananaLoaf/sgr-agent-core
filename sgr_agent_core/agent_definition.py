@@ -272,18 +272,22 @@ class AgentDefinition(AgentConfig):
             raise FileNotFoundError(f"Agent definition file not found: {yaml_path}") from e
 
 
-class ToolDefinition(BaseModel):
+class ToolDefinition(BaseModel, extra="allow"):
     """Definition of a custom tool.
 
     Tools can be defined with:
     - base_class: Import string or class name (optional, defaults to sgr_agent_core.tools.{ToolName})
-    - Any additional parameters for the tool
+    - Any additional parameters for the tool (passed as kwargs at runtime; e.g. max_results, max_searches)
     """
 
     name: str = Field(description="Unique tool name/ID")
     base_class: Union[type[Any], ImportString, str, None] = Field(
         default=None, description="Tool class name (optional, defaults to sgr_agent_core.tools.{name})"
     )
+
+    def tool_kwargs(self) -> dict[str, Any]:
+        """Return extra fields as kwargs for the tool (global tool config)."""
+        return {k: v for k, v in self.model_dump().items() if k not in ("name", "base_class")}
 
     @field_validator("base_class", mode="before")
     def base_class_import_points_to_file(cls, v: Any) -> Any:

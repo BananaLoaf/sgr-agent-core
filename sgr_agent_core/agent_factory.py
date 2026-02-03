@@ -146,32 +146,39 @@ class AgentFactory:
         return generator_class
 
     @classmethod
+    def _global_tool_kwargs(cls, tool_name: str, config: GlobalConfig) -> dict[str, Any]:
+        """Get kwargs from global tool definition if present."""
+        if tool_name not in config.tools:
+            return {}
+        tool_def = config.tools[tool_name]
+        return tool_def.tool_kwargs()
+
+    @classmethod
     def _resolve_tools_with_configs(
         cls, tools_spec: list[Any], config: GlobalConfig
     ) -> tuple[list[type[BaseTool]], dict[str, dict[str, Any]]]:
         """Resolve tools from spec (str, type, or dict with 'name' + kwargs).
 
-        Args:
-            tools_spec: List of tool names, classes, or dicts with 'name' and optional kwargs
-            config: Global configuration containing tool definitions
-
-        Returns:
-            Tuple of (list of tool classes, dict of tool_name -> kwargs for each tool)
+        Global tool config (from config.tools section) is merged with
+        per-agent inline kwargs; inline takes precedence.
         """
         toolkit: list[type[BaseTool]] = []
         tool_configs: dict[str, dict[str, Any]] = {}
         for item in tools_spec:
             if isinstance(item, dict):
                 name = item["name"]
-                kwargs = {k: v for k, v in item.items() if k not in ("name", "type", "base_class")}
+                inline_kwargs = {k: v for k, v in item.items() if k not in ("name", "type", "base_class")}
                 tool_class = cls._resolve_tool(name, config)
                 toolkit.append(tool_class)
-                tool_configs[tool_class.tool_name] = kwargs
+                global_kwargs = cls._global_tool_kwargs(name, config)
+                tool_configs[tool_class.tool_name] = {**global_kwargs, **inline_kwargs}
             else:
                 tool_class = cls._resolve_tool(item, config)
                 toolkit.append(tool_class)
-                if tool_class.tool_name not in tool_configs:
-                    tool_configs[tool_class.tool_name] = {}
+                # Only string names can be looked up in global config
+                name_for_global = item if isinstance(item, str) else None
+                global_kwargs = cls._global_tool_kwargs(name_for_global, config) if name_for_global else {}
+                tool_configs[tool_class.tool_name] = global_kwargs
         return toolkit, tool_configs
 
     @classmethod

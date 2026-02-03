@@ -80,6 +80,11 @@ Tools can be defined in a separate `tools:` section in `config.yaml` or `agents.
 
 **Tool Definition Format:**
 
+Each entry in the global `tools:` section can include:
+
+- **base_class** (optional) – import path or registry name for the tool class
+- **Any other keys** – passed to the tool at runtime as kwargs (e.g. `max_results`, `max_searches`, `content_limit` for search tools). Agents that reference the tool by name receive these params; per-agent inline config in the `tools` list overrides global values.
+
 ```yaml
 tools:
   # Simple tool definition (uses default base_class from ToolRegistry)
@@ -89,7 +94,11 @@ tools:
   # Custom tool with explicit base_class
   custom_tool:
     base_class: "tools.CustomTool"  # Relative import path
-    # Additional tool-specific parameters can be added here
+
+  # Global defaults for a tool (all agents using this tool by name get these kwargs)
+  web_search_tool:
+    max_results: 12
+    max_searches: 6
 ```
 
 **Using Tools in Agents:**
