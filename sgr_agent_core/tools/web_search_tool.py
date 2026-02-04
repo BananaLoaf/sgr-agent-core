@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import Field
 
-from sgr_agent_core.agent_definition import AgentConfig
+from sgr_agent_core.agent_definition import AgentConfig, SearchConfig
 from sgr_agent_core.base_tool import BaseTool
 from sgr_agent_core.models import SearchResult
-from sgr_agent_core.services.tavily_search import TavilySearchService, search_config_from_kwargs
+from sgr_agent_core.services.tavily_search import TavilySearchService
+from sgr_agent_core.utils import config_from_kwargs
 
 if TYPE_CHECKING:
     from sgr_agent_core.models import AgentContext
@@ -58,7 +59,11 @@ class WebSearchTool(BaseTool):
         Search settings are taken from kwargs (tool config) with
         fallback to config.search.
         """
-        search_config = search_config_from_kwargs(config, dict(kwargs))
+        search_config = config_from_kwargs(
+            SearchConfig,
+            config.search if config else None,
+            dict(kwargs),
+        )
         logger.info(f"🔍 Search query: '{self.query}'")
         self._search_service = TavilySearchService(search_config)
 
