@@ -53,7 +53,7 @@ class BaseAgent(AgentRegistryMixin):
         self._context = AgentContext()
         self.conversation = []
 
-        self.streaming_generator = OpenAIStreamingGenerator(model=self.id)
+        self.streaming_generator = OpenAIStreamingGenerator(agent_id=self.id)
         self.logger = logging.getLogger(f"sgr_agent_core.agents.{self.id}")
         self.log = []
 
@@ -204,8 +204,9 @@ class BaseAgent(AgentRegistryMixin):
 
         if isinstance(action_tool, ClarificationTool):
             self.logger.info("\n⏸️  Research paused - please answer questions")
-            self._context.state = AgentStatesEnum.WAITING_FOR_CLARIFICATION
-            self.streaming_generator.finish()
+            self.streaming_generator.finish(
+                phase_id="{self._context.iteration}-final", content=self._context.execution_result
+            )
             self._context.clarification_received.clear()
             await self._context.clarification_received.wait()
 
@@ -240,6 +241,7 @@ class BaseAgent(AgentRegistryMixin):
         This method contains the main agent execution logic. It is
         called by execute() which wraps it in an asyncio task.
         """
+        print("start messages: ", self.task_messages)
         self.logger.info(f"🚀 User provided {len(self.task_messages)} messages.")
         try:
             while self._context.state not in AgentStatesEnum.FINISH_STATES.value:
@@ -259,5 +261,7 @@ class BaseAgent(AgentRegistryMixin):
             traceback.print_exc()
         finally:
             if self.streaming_generator is not None:
-                self.streaming_generator.finish(self._context.execution_result)
+                self.streaming_generator.finish(
+                    phase_id=f"{self._context.iteration}-final", content=self._context.execution_result
+                )
             self._save_agent_log()
