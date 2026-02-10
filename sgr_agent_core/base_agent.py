@@ -14,7 +14,7 @@ from sgr_agent_core.agent_definition import AgentConfig
 from sgr_agent_core.models import AgentContext, AgentStatesEnum
 from sgr_agent_core.services.prompt_loader import PromptLoader
 from sgr_agent_core.services.registry import AgentRegistry
-from sgr_agent_core.stream import OpenAIStreamingGenerator
+from sgr_agent_core.stream import BaseStreamingGenerator, OpenAIStreamingGenerator
 from sgr_agent_core.tools import (
     BaseTool,
     ClarificationTool,
@@ -41,9 +41,12 @@ class BaseAgent(AgentRegistryMixin):
         agent_config: AgentConfig,
         toolkit: list[Type[BaseTool]],
         def_name: str | None = None,
+        streaming_generator: type[BaseStreamingGenerator] = OpenAIStreamingGenerator,
         **kwargs: dict,
     ):
         self.id = f"{def_name or self.name}_{uuid.uuid4()}"
+        self.streaming_generator = streaming_generator(agent_id=self.id)
+
         self.openai_client = openai_client
         self.config = agent_config
         self.creation_time = datetime.now()
@@ -52,8 +55,6 @@ class BaseAgent(AgentRegistryMixin):
 
         self._context = AgentContext()
         self.conversation = []
-
-        self.streaming_generator = OpenAIStreamingGenerator(agent_id=self.id)
         self.logger = logging.getLogger(f"sgr_agent_core.agents.{self.id}")
         self.log = []
 

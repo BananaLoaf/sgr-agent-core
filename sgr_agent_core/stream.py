@@ -6,9 +6,27 @@ from typing import Any, AsyncGenerator
 from openai.types.chat import ChatCompletionChunk
 
 from sgr_agent_core.base_tool import BaseTool
+from sgr_agent_core.services.registry import StreamingGeneratorRegistry
 
 
-class StreamingGenerator:
+class StreamingGeneratorRegistryMixin:
+    """Mixin that registers streaming generator subclasses in
+    StreamingGeneratorRegistry."""
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if cls.__name__ != "BaseStreamingGenerator":
+            StreamingGeneratorRegistry.register(cls, name=cls.name)
+
+
+class BaseStreamingGenerator(StreamingGeneratorRegistryMixin):
+    """Base class for streaming generators.
+
+    Subclasses are auto-registered by name.
+    """
+
+    name: str = "base_streaming_generator"
+
     def __init__(self):
         self.queue = asyncio.Queue()
 
@@ -30,7 +48,14 @@ class StreamingGenerator:
             yield data
 
 
-class OpenAIStreamingGenerator(StreamingGenerator):
+class OpenAIStreamingGenerator(BaseStreamingGenerator):
+    """OpenAI SSE format.
+
+    Registered as 'openai'.
+    """
+
+    name: str = "openai"
+
     def __init__(self, agent_id: str):
         super().__init__()
         self.agent_id = agent_id
@@ -54,6 +79,10 @@ class OpenAIStreamingGenerator(StreamingGenerator):
         chunk.model = self.agent_id
         chunk.created = int(time.time())
         super().add(f"data: {chunk.model_dump_json()}\n\n")
+
+    def add_tool_call(self, phase_id: str, tool: BaseTool) -> None:
+        """No-op: we already stream tool by chunks"""
+        pass
 
     def add_content_delta(self, content: str, phase_id: str):
         """Adds a chunk with content delta."""
@@ -115,10 +144,16 @@ class OpenAIStreamingGenerator(StreamingGenerator):
 
 
 class OpenWebUIStreamingGenerator(OpenAIStreamingGenerator):
-    """Streaming generator: tool calls and results in <details> from get_final_completion."""
+    """Streaming generator: tool calls and results in <details>. Registered as 'open_webui'."""
+
+    name: str = "open_webui"
 
     def __init__(self, agent_id: str):
         super().__init__(agent_id)
+
+    def add_chunk(self, chunk: ChatCompletionChunk, phase_id: str) -> None:
+        """No-op: we group and send only final tool/reasoning in <details>, not raw chunks."""
+        pass
 
     def _wrap_in_code_block(self, content: str, language: str = "") -> str:
         """Wraps content in a Markdown code block."""
@@ -127,9 +162,8 @@ class OpenWebUIStreamingGenerator(OpenAIStreamingGenerator):
         lang_suffix = f" {language}" if language else ""
         return f"```{lang_suffix}\n{content}\n```"
 
-    def _add_tool_call(self, phase_id: str, tool: BaseTool) -> None:
-        """Takes final completion (pydantic), extracts tool_calls, formats and
-        sends in <details>."""
+    def add_tool_call(self, phase_id: str, tool: BaseTool) -> None:
+        """Formats tool/reasoning and sends in <details>."""
         block = (
             f"<details>\n"
             f"<summary>Phase: {phase_id} Tool Call: {tool.tool_name}</summary>\n\n"
@@ -148,12 +182,3 @@ class OpenWebUIStreamingGenerator(OpenAIStreamingGenerator):
             wrapped_content = self._wrap_in_code_block(content)
         result_content = f"<details>\n{result_header}{wrapped_content}\n\n</details>\n\n"
         self.add_content_delta(result_content, phase_id)
-
-    async def wrap_tool_stream(self, original_stream, phase_id: str) -> AsyncGenerator[Any, None]:
-        """Restream and fill with agent metainfo."""
-        async for event in original_stream:
-            yield event
-        completion = await original_stream.get_final_completion()
-        completed_tool = completion.choices[0].message.tool_calls[0].function.parsed_arguments
-        if isinstance(completed_tool, BaseTool):
-            self._add_tool_call(phase_id, completed_tool)

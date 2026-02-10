@@ -5,7 +5,6 @@ from openai import AsyncOpenAI, pydantic_function_tool
 from sgr_agent_core.agent_config import AgentConfig
 from sgr_agent_core.base_agent import BaseAgent
 from sgr_agent_core.models import AgentStatesEnum
-from sgr_agent_core.stream import OpenWebUIStreamingGenerator
 from sgr_agent_core.tools import (
     BaseTool,
     FinalAnswerTool,
@@ -36,8 +35,6 @@ class SGRToolCallingAgent(BaseAgent):
             def_name=def_name,
             **kwargs,
         )
-        # Replace streaming generator with OpenWebUI version for markdown formatting
-        self.streaming_generator = OpenWebUIStreamingGenerator(agent_id=self.id)
         self.tool_choice: Literal["required"] = "required"
 
     async def _reasoning_phase(self) -> ReasoningTool:
@@ -47,11 +44,13 @@ class SGRToolCallingAgent(BaseAgent):
             tools=[pydantic_function_tool(ReasoningTool, name=ReasoningTool.tool_name)],
             tool_choice=self.tool_choice,
             **self.config.llm.to_openai_client_kwargs(),
-        ) as original_stream:
-            async for _ in self.streaming_generator.wrap_tool_stream(original_stream, phase_id):
-                continue
-            final_completion = await original_stream.get_final_completion()
-            reasoning: ReasoningTool = final_completion.choices[0].message.tool_calls[0].function.parsed_arguments
+        ) as stream:
+            async for event in stream:
+                if event.type == "chunk":
+                    self.streaming_generator.add_chunk(event.chunk, phase_id)
+            final_completion = await stream.get_final_completion()
+        reasoning: ReasoningTool = final_completion.choices[0].message.tool_calls[0].function.parsed_arguments
+        self.streaming_generator.add_tool_call(phase_id, reasoning)
         self.conversation.append(
             {
                 "role": "assistant",
@@ -81,10 +80,11 @@ class SGRToolCallingAgent(BaseAgent):
             tools=await self._prepare_tools(),
             tool_choice=self.tool_choice,
             **self.config.llm.to_openai_client_kwargs(),
-        ) as original_stream:
-            async for _ in self.streaming_generator.wrap_tool_stream(original_stream, phase_id):
-                continue
-            completion = await original_stream.get_final_completion()
+        ) as stream:
+            async for event in stream:
+                if event.type == "chunk":
+                    self.streaming_generator.add_chunk(event.chunk, phase_id)
+            completion = await stream.get_final_completion()
         try:
             tool = completion.choices[0].message.tool_calls[0].function.parsed_arguments
         except (IndexError, AttributeError, TypeError):
@@ -114,6 +114,7 @@ class SGRToolCallingAgent(BaseAgent):
                 ],
             }
         )
+        self.streaming_generator.add_tool_call(phase_id, tool)
         return tool
 
     async def _action_phase(self, tool: BaseTool) -> str:
