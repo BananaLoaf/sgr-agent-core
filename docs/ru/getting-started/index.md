@@ -57,10 +57,61 @@ pip install sgr-agent-core
 
 См. [Руководство по установке](installation.md) для подробных инструкций и [Использование как библиотека](../framework/first-steps.md) для начала работы.
 
-### Следующие шаги
+### CLI утилита (`sgrsh`)
 
-- **[Использование как библиотека](../framework/first-steps.md)** — Узнайте, как использовать SGR Agent Core как Python библиотеку
-- **[Быстрый старт API сервера](../sgr-api/SGR-Quick-Start.md)** — Начните работу с REST API сервисом
+После установки вы можете использовать утилиту командной строки `sgrsh` для интерактивной работы с агентами:
+
+```bash
+# Режим одного запроса
+sgrsh "Найди текущую цену биткоина"
+
+# С выбором агента
+sgrsh --agent sgr_agent "Что такое AI?"
+
+# С указанием файла конфигурации
+sgrsh -c config.yaml -a sgr_agent "Ваш запрос"
+
+# Интерактивный режим чата (без аргумента запроса)
+sgrsh
+sgrsh -a sgr_agent
+```
+
+Команда `sgrsh`:
+- Автоматически ищет `config.yaml` в текущей директории
+- Поддерживает интерактивный режим чата для множественных запросов
+- Обрабатывает запросы на уточнение от агентов интерактивно
+- Работает с любым агентом, определённым в вашей конфигурации
+
+### Использование как библиотека
+
+```python
+import asyncio
+from sgr_agent_core import AgentDefinition, AgentFactory
+from sgr_agent_core.agents import SGRToolCallingAgent
+import sgr_agent_core.tools as tools
+
+async def main():
+    agent_def = AgentDefinition(
+        name="my_agent",
+        base_class=SGRToolCallingAgent,
+        tools=[tools.GeneratePlanTool, tools.FinalAnswerTool],
+        llm={
+            "api_key": "your-api-key",
+            "base_url": "https://api.openai.com/v1",
+        },
+    )
+
+    agent = await AgentFactory.create(
+        agent_def=agent_def,
+        task_messages=[{"role": "user", "content": "Исследуй тренды в AI"}],
+    )
+
+    result = await agent.execute()
+    print(result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
 
 ## Документация
 

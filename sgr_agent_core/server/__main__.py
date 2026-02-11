@@ -47,14 +47,14 @@ def load_config(config_file: str, agents_file: str | None = None) -> GlobalConfi
 
 
 def main():
-    """Start FastAPI server."""
-    args = ServerConfig()
+    """Start FastAPI server.
 
-    setup_logging(args.logging_file)
-
-    load_config(args.config_file, args.agents_file)
-
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    Config from ServerConfig (env + CLI, see settings.py).
+    """
+    server_config = ServerConfig()
+    setup_logging(server_config.logging_file)
+    load_config(server_config.config_file, server_config.agents_file)
+    uvicorn.run(app, host=server_config.host, port=server_config.port, log_level="info")
 
 
 if __name__ == "__main__":
